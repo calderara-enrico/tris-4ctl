@@ -75,7 +75,7 @@ Sostituisci **tutti i valori segnati come GENERICO** con:
 Esegui il file Python:
 
 ```
-python3 main.py
+python3 tris.py
 ```
 
 Comparirà il menu:
