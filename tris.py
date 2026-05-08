@@ -1,5 +1,39 @@
 import pymysql
 
+# --- CONFIGURAZIONE DATABASE ---
+DB_CONFIG = {
+    "host": "0.0.0.0",
+    "user": "NOME_UTENTE",
+    "password": "PASSWORD",
+    "database": "NOME_DATABASE",
+    "port": 5000,
+    "cursorclass": pymysql.cursors.Cursor,
+    "connect_timeout": 5,
+}
+
+def get_connection():
+    return pymysql.connect(**DB_CONFIG)
+
+# --- FUNZIONI SQL ---
+def get_or_create_player(conn, name):
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT id FROM players WHERE name = %s", (name,))
+        row = cursor.fetchone()
+        if row:
+            return row[0]
+
+        cursor.execute("INSERT INTO players (name) VALUES (%s)", (name,))
+        conn.commit()
+        return cursor.lastrowid
+
+def save_game(conn, player_x_id, player_o_id, winner_id):
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO games (player_x_id, player_o_id, winner_id) VALUES (%s, %s, %s)",
+            (player_x_id, player_o_id, winner_id)
+        )
+    conn.commit()
+
 def get_top5_full_stats(conn):
     with conn.cursor() as cursor:
         cursor.execute("""
@@ -21,67 +55,6 @@ def get_top5_full_stats(conn):
 
         return top5
 
-def stampa_top5(conn):
-    print("\n=== TOP 5 GIOCATORI ===")
-    top = get_top5_full_stats(conn)
-
-    print(f"\n{'Giocatore':<20} {'Vittorie':<10} {'Giocate':<10} {'Winrate (%)':<12}")
-    print("-" * 55)
-
-    for nome, vinte, giocate, winrate in top:
-        print(f"{nome:<20} {vinte:<10} {giocate:<10} {winrate:>10.2f}")
-
-
-# --- CONFIGURAZIONE DATABASE ---
-DB_CONFIG = {
-    "host": "127.0.0.1",
-    "user": "4CTL_calde.e.140908",
-    "password": "enrico14",
-    "database": "4CTL_calde.e.140908",
-    "port": 3307,
-    "cursorclass": pymysql.cursors.Cursor,
-    "connect_timeout": 5,
-}
-
-def get_connection():
-    return pymysql.connect(**DB_CONFIG)
-
-
-# --- FUNZIONI SQL ---
-def get_or_create_player(conn, name):
-    with conn.cursor() as cursor:
-        cursor.execute("SELECT id FROM players WHERE name = %s", (name,))
-        row = cursor.fetchone()
-        if row:
-            return row[0]
-
-        cursor.execute("INSERT INTO players (name) VALUES (%s)", (name,))
-        conn.commit()
-        return cursor.lastrowid
-
-
-def save_game(conn, player_x_id, player_o_id, winner_id):
-    with conn.cursor() as cursor:
-        cursor.execute(
-            "INSERT INTO games (player_x_id, player_o_id, winner_id) VALUES (%s, %s, %s)",
-            (player_x_id, player_o_id, winner_id)
-        )
-    conn.commit()
-
-
-def get_top_players(conn):
-    with conn.cursor() as cursor:
-        cursor.execute("""
-            SELECT p.name, COUNT(g.winner_id) AS vittorie
-            FROM players p
-            LEFT JOIN games g ON p.id = g.winner_id
-            GROUP BY p.id
-            ORDER BY vittorie DESC
-            LIMIT 5
-        """)
-        return cursor.fetchall()
-
-
 def get_player_stats(conn, player_id):
     with conn.cursor() as cursor:
         cursor.execute("""
@@ -97,25 +70,23 @@ def get_player_stats(conn, player_id):
         winrate = (vinte / giocate * 100) if giocate > 0 else 0
         return giocate, vinte, perse, winrate
 
-# --- FASE DI LOGIN ---
-print("=== BENVENUTI A TRIS ===")
-g1_nome = input("Inserisci il nome utente del Giocatore 1 (Userà le X): ")
-g2_nome = input("Inserisci il nome utente del Giocatore 2 (Userà le O): ")
-print(f"\nPerfetto! {g1_nome} vs {g2_nome}. Iniziamo!\n")
+# --- FUNZIONI DI INTERFACCIA ---
+def stampa_top5(conn):
+    print("\n=== TOP 5 GIOCATORI ===")
+    top = get_top5_full_stats(conn)
 
-conn = get_connection()
-g1_id = get_or_create_player(conn, g1_nome)
-g2_id = get_or_create_player(conn, g2_nome)
+    print(f"\n{'Giocatore':<20} {'Vittorie':<10} {'Giocate':<10} {'Winrate (%)':<12}")
+    print("-" * 55)
 
+    for nome, vinte, giocate, winrate in top:
+        print(f"{nome:<20} {vinte:<10} {giocate:<10} {winrate:>10.2f}")
 
-# --- FUNZIONI DI GIOCO ---
 def stampa_scacchiera(scacchiera):
     print(f"\n {scacchiera[0]} | {scacchiera[1]} | {scacchiera[2]} ")
     print("-----------")
     print(f" {scacchiera[3]} | {scacchiera[4]} | {scacchiera[5]} ")
     print("-----------")
     print(f" {scacchiera[6]} | {scacchiera[7]} | {scacchiera[8]} \n")
-
 
 def fai_mossa(scacchiera, posizione, simbolo):
     if scacchiera[posizione] != "_":
@@ -124,7 +95,6 @@ def fai_mossa(scacchiera, posizione, simbolo):
     else:
         scacchiera[posizione] = simbolo
         return True
-
 
 def ha_vinto(scacchiera, simbolo):
     combinazioni_vincenti = [
@@ -137,9 +107,18 @@ def ha_vinto(scacchiera, simbolo):
             return True
     return False
 
-
 # --- LOGICA DI GIOCO ---
 def gioca():
+    conn = get_connection()
+    
+    print("=== BENVENUTI A TRIS ===")
+    g1_nome = input("Inserisci il nome utente del Giocatore 1 (Userà le X): ")
+    g2_nome = input("Inserisci il nome utente del Giocatore 2 (Userà le O): ")
+    print(f"\nPerfetto! {g1_nome} vs {g2_nome}. Iniziamo!\n")
+
+    g1_id = get_or_create_player(conn, g1_nome)
+    g2_id = get_or_create_player(conn, g2_nome)
+
     scacchiera = ["_"] * 9
     giocatore_attuale = g1_nome
     simbolo_attuale = "X"
@@ -169,24 +148,17 @@ def gioca():
             print("="*40)
             print(f" VITTORIA! {giocatore_attuale}, hai vinto!")
             print("="*40)
-            stampa_top5("\n"conn)
-
-
+            
             winner_id = g1_id if simbolo_attuale == "X" else g2_id
             save_game(conn, g1_id, g2_id, winner_id)
             break
 
-       if turni == 9:
-    stampa_scacchiera(scacchiera)
-    print(" Pareggio! La scacchiera è piena.")
-    print(" Il pareggio vale come doppia sconfitta!")
-
-    # DOUBLE LOSS → winner_id = -1
-    save_game(conn, g1_id, g2_id, -1)
-
-    stampa_top5(conn)
-    break
-
+        if turni == 9:
+            stampa_scacchiera(scacchiera)
+            print(" Pareggio! La scacchiera è piena.")
+            print(" Il pareggio vale come doppia sconfitta!")
+            save_game(conn, g1_id, g2_id, -1)
+            break
 
         # Cambio Giocatore
         if giocatore_attuale == g1_nome:
@@ -196,155 +168,8 @@ def gioca():
             giocatore_attuale = g1_nome
             simbolo_attuale = "X"
 
-import pymysql
-
-# CONFIGURAZIONE DATABASE
-DB_CONFIG = {
-    "host": "0.0.0.0",                 # GENERICO
-    "user": "NOME_UTENTE_DATABASE",    # GENERICO
-    "password": "PASSWORD_DATABASE",   # GENERICO
-    "database": "NOME_DATABASE",       # GENERICO
-    "port": 0000,                      # GENERICO
-    "cursorclass": pymysql.cursors.Cursor,
-    "connect_timeout": 5,
-}
-
-def get_connection():
-    return pymysql.connect(**DB_CONFIG)
-
-
-# IMPORT DAL MODULO DB
-from db import (
-    get_or_create_player,
-    save_game,
-    get_top_players,
-    get_player_stats
-)
-
-
-# FUNZIONI DI GIOCO
-def stampa_scacchiera(s):
-    print(f"\n {s[0]} | {s[1]} | {s[2]} ")
-    print("-----------")
-    print(f" {s[3]} | {s[4]} | {s[5]} ")
-    print("-----------")
-    print(f" {s[6]} | {s[7]} | {s[8]} \n")
-
-def fai_mossa(s, pos, simbolo):
-    if s[pos] != "_":
-        print("Posizione occupata!")
-        return False
-    s[pos] = simbolo
-    return True
-
-def ha_vinto(s, simbolo):
-    combinazioni = [
-        [0,1,2],[3,4,5],[6,7,8],
-        [0,3,6],[1,4,7],[2,5,8],
-        [0,4,8],[2,4,6]
-    ]
-    return any(s[a] == s[b] == s[c] == simbolo for a,b,c in combinazioni)
-
-
-# LOGICA PRINCIPALE DI GIOCO
-def gioca(conn):
-    print("=== BENVENUTI A TRIS ===")
-    g1_nome = input("Nome Giocatore 1 (X): ")
-    g2_nome = input("Nome Giocatore 2 (O): ")
-
-    g1_id = get_or_create_player(conn, g1_nome)
-    g2_id = get_or_create_player(conn, g2_nome)
-
-    scacchiera = ["_"] * 9
-    giocatore = g1_nome
-    simbolo = "X"
-    turni = 0
-
-    while True:
-        stampa_scacchiera(scacchiera)
-
-        try:
-            pos = int(input(f"{giocatore} ({simbolo}) scegli posizione (1-9): ")) - 1
-            if pos < 0 or pos > 8:
-                print("Numero non valido.")
-                continue
-        except:
-            print("Inserisci un numero!")
-            continue
-
-        if not fai_mossa(scacchiera, pos, simbolo):
-            continue
-
-        turni += 1
-
-        if ha_vinto(scacchiera, simbolo):
-            stampa_scacchiera(scacchiera)
-            print(f"VITTORIA di {giocatore}!")
-
-            winner_id = g1_id if simbolo == "X" else g2_id
-            save_game(conn, g1_id, g2_id, winner_id)
-            break
-
-        if turni == 9:
-            stampa_scacchiera(scacchiera)
-            print("Pareggio!")
-            save_game(conn, g1_id, g2_id, None)
-            break
-
-        giocatore = g2_nome if giocatore == g1_nome else g1_nome
-        simbolo = "O" if simbolo == "X" else "X"
-
-
-# MENU PRINCIPALE
-def main():
-    conn = get_connection()
-
-    while True:
-        print("\n=== MENU ===")
-        print("1) Gioca una partita")
-        print("2) Top 5 giocatori")
-        print("3) Statistiche giocatore")
-        print("4) Esci")
-
-        scelta = input("> ")
-
-        if scelta == "1":
-            gioca(conn)
-
-        elif scelta == "2":
-            top = get_top_players(conn)
-            print("\n--- TOP 5 ---")
-            for nome, vittorie in top:
-                print(f"{nome}: {vittorie} vittorie")
-
-        elif scelta == "3":
-            nome = input("Inserisci nome giocatore: ")
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT id FROM players WHERE name = %s", (nome,))
-                row = cursor.fetchone()
-
-            if not row:
-                print("Giocatore non trovato.")
-                continue
-
-            pid = row[0]
-            giocate, vinte, perse, winrate = get_player_stats(conn, pid)
-
-            print(f"\nStatistiche di {nome}:")
-            print(f"Partite giocate: {giocate}")
-            print(f"Vinte: {vinte}")
-            print(f"Perse: {perse}")
-            print(f"Win rate: {winrate:.2f}%")
-
-        elif scelta == "4":
-            print("Arrivederci!")
-            break
-
-        else:
-            print("Scelta non valida.")
-
+    stampa_top5(conn)
     conn.close()
 
-
 if __name__ == "__main__":
-    main()
+    gioca()
